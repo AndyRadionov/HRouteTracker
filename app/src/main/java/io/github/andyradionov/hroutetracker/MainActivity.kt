@@ -14,83 +14,51 @@ import android.provider.Settings
 import android.support.design.widget.Snackbar
 import android.support.v4.app.ActivityCompat
 import android.support.v7.app.AppCompatActivity
-import android.support.v7.widget.Toolbar
 import android.util.Log
 import android.view.View
-import android.widget.Button
-import android.widget.TextView
 import android.widget.Toast
-
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.ResolvableApiException
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.LocationSettingsRequest
-import com.google.android.gms.location.LocationSettingsResponse
-import com.google.android.gms.location.LocationSettingsStatusCodes
-import com.google.android.gms.location.SettingsClient
-import com.google.android.gms.tasks.OnCompleteListener
-import com.google.android.gms.tasks.OnFailureListener
-import com.google.android.gms.tasks.OnSuccessListener
-import com.google.android.gms.tasks.Task
-
+import com.google.android.gms.location.*
+import kotlinx.android.synthetic.main.activity_main.*
 import java.text.DateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
-    private var mFusedLocationClient: FusedLocationProviderClient? = null
-    private var mSettingsClient: SettingsClient? = null
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var settingsClient: SettingsClient
 
-    private var mLocationRequest: LocationRequest? = null
-    private var mLocationSettingsRequest: LocationSettingsRequest? = null
+    private lateinit var locationRequest: LocationRequest
+    private lateinit var locationSettingsRequest: LocationSettingsRequest
 
-    private var mLocationCallback: LocationCallback? = null
+    private lateinit var locationCallback: LocationCallback
 
-    private var mCurrentLocation: Location? = null
+    private var currentLocation: Location? = null
 
-    private var mStartUpdatesButton: Button? = null
-    private var mStopUpdatesButton: Button? = null
-    private var mLastUpdateTimeTextView: TextView? = null
-    private var mLatitudeTextView: TextView? = null
-    private var mLongitudeTextView: TextView? = null
+    private lateinit var latitudeLabel: String
+    private lateinit var longitudeLabel: String
+    private lateinit var lastUpdateTimeLabel: String
 
-    private var mLatitudeLabel: String? = null
-    private var mLongitudeLabel: String? = null
-    private var mLastUpdateTimeLabel: String? = null
-
-    private var mRequestingLocationUpdates: Boolean? = null
-
-    private var mLastUpdateTime: String? = null
-    private var mNeverAskPermissionShowed: Boolean = false
+    private var lastUpdateTime: String = ""
+    private var requestingLocationUpdates: Boolean = false
+    private var neverAskPermissionShowed: Boolean = false
 
     public override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        val toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
 
-        mStartUpdatesButton = findViewById(R.id.start_updates_button)
-        mStopUpdatesButton = findViewById(R.id.stop_updates_button)
-        mLatitudeTextView = findViewById(R.id.latitude_text)
-        mLongitudeTextView = findViewById(R.id.longitude_text)
-        mLastUpdateTimeTextView = findViewById(R.id.last_update_time_text)
+        latitudeLabel = getString(R.string.latitude_label)
+        longitudeLabel = getString(R.string.longitude_label)
+        lastUpdateTimeLabel = getString(R.string.last_update_time_label)
 
-        mLatitudeLabel = resources.getString(R.string.latitude_label)
-        mLongitudeLabel = resources.getString(R.string.longitude_label)
-        mLastUpdateTimeLabel = resources.getString(R.string.last_update_time_label)
-
-        mRequestingLocationUpdates = false
-        mLastUpdateTime = ""
+        lastUpdateTime = ""
 
         updateValuesFromBundle(savedInstanceState)
 
-        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        mSettingsClient = LocationServices.getSettingsClient(this)
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        settingsClient = LocationServices.getSettingsClient(this)
 
         createLocationCallback()
         createLocationRequest()
@@ -105,16 +73,16 @@ class MainActivity : AppCompatActivity() {
     private fun updateValuesFromBundle(savedInstanceState: Bundle?) {
         if (savedInstanceState != null) {
             if (savedInstanceState.keySet().contains(KEY_REQUESTING_LOCATION_UPDATES)) {
-                mRequestingLocationUpdates = savedInstanceState.getBoolean(
+                requestingLocationUpdates = savedInstanceState.getBoolean(
                         KEY_REQUESTING_LOCATION_UPDATES)
             }
 
             if (savedInstanceState.keySet().contains(KEY_LOCATION)) {
-                mCurrentLocation = savedInstanceState.getParcelable(KEY_LOCATION)
+                currentLocation = savedInstanceState.getParcelable(KEY_LOCATION)
             }
 
             if (savedInstanceState.keySet().contains(KEY_LAST_UPDATED_TIME_STRING)) {
-                mLastUpdateTime = savedInstanceState.getString(KEY_LAST_UPDATED_TIME_STRING)
+                lastUpdateTime = savedInstanceState.getString(KEY_LAST_UPDATED_TIME_STRING)
             }
             updateUI()
         }
@@ -136,37 +104,38 @@ class MainActivity : AppCompatActivity() {
      * updates.
      */
     private fun createLocationRequest() {
-        mLocationRequest = LocationRequest()
+        locationRequest = LocationRequest()
                 .setInterval(UPDATE_INTERVAL_IN_MILLISECONDS)
                 .setFastestInterval(FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS)
                 .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
     }
 
     private fun createLocationCallback() {
-        mLocationCallback = object : LocationCallback() {
+        locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult?) {
                 super.onLocationResult(locationResult)
 
-                mCurrentLocation = locationResult!!.lastLocation
-                mLastUpdateTime = DateFormat.getTimeInstance().format(Date())
+                currentLocation = locationResult?.lastLocation
+                lastUpdateTime = DateFormat.getTimeInstance().format(Date())
                 updateLocationUI()
             }
         }
     }
 
     private fun buildLocationSettingsRequest() {
-        mLocationSettingsRequest = LocationSettingsRequest.Builder()
-                .addLocationRequest(mLocationRequest!!)
+        locationSettingsRequest = LocationSettingsRequest.Builder()
+                .addLocationRequest(locationRequest)
                 .build()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
         when (requestCode) {
             REQUEST_CHECK_SETTINGS -> when (resultCode) {
-                Activity.RESULT_OK -> Log.i(TAG, "User agreed to make required location settings changes.")
+                Activity.RESULT_OK ->
+                    Log.i(TAG, "User agreed to make required location settings changes.")
                 Activity.RESULT_CANCELED -> {
                     Log.i(TAG, "User chose not to make required location settings changes.")
-                    mRequestingLocationUpdates = false
+                    requestingLocationUpdates = false
                     updateUI()
                 }
             }
@@ -174,8 +143,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun startUpdatesButtonHandler(view: View) {
-        if ((!mRequestingLocationUpdates)!!) {
-            mRequestingLocationUpdates = true
+        if ((!requestingLocationUpdates)) {
+            requestingLocationUpdates = true
             setButtonsEnabledState()
             startLocationUpdates()
         }
@@ -187,12 +156,12 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
-        mSettingsClient!!.checkLocationSettings(mLocationSettingsRequest)
+        settingsClient.checkLocationSettings(locationSettingsRequest)
                 .addOnSuccessListener(this) {
                     Log.i(TAG, "All location settings are satisfied.")
 
-                    mFusedLocationClient!!.requestLocationUpdates(mLocationRequest,
-                            mLocationCallback!!, Looper.myLooper())
+                    fusedLocationClient.requestLocationUpdates(locationRequest,
+                            locationCallback, Looper.myLooper())
 
                     updateUI()
                 }
@@ -200,7 +169,7 @@ class MainActivity : AppCompatActivity() {
                     val statusCode = (e as ApiException).statusCode
                     when (statusCode) {
                         LocationSettingsStatusCodes.RESOLUTION_REQUIRED -> {
-                            Log.i(TAG, "Location settings are not satisfied. Attempting to upgrade " + "location settings ")
+                            Log.i(TAG, "Location settings are not satisfied. Attempting to upgrade location settings ")
                             try {
                                 val rae = e as ResolvableApiException
                                 rae.startResolutionForResult(this@MainActivity, REQUEST_CHECK_SETTINGS)
@@ -210,10 +179,10 @@ class MainActivity : AppCompatActivity() {
 
                         }
                         LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE -> {
-                            val errorMessage = "Location settings are inadequate, and cannot be " + "fixed here. Fix in Settings."
+                            val errorMessage = "Location settings are inadequate, and cannot be fixed here. Fix in Settings."
                             Log.e(TAG, errorMessage)
                             Toast.makeText(this@MainActivity, errorMessage, Toast.LENGTH_LONG).show()
-                            mRequestingLocationUpdates = false
+                            requestingLocationUpdates = false
                         }
                     }
 
@@ -227,44 +196,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setButtonsEnabledState() {
-        if (mRequestingLocationUpdates!!) {
-            mStartUpdatesButton!!.isEnabled = false
-            mStopUpdatesButton!!.isEnabled = true
+        if (requestingLocationUpdates) {
+            start_updates_button.isEnabled = false
+            stop_updates_button.isEnabled = true
         } else {
-            mStartUpdatesButton!!.isEnabled = true
-            mStopUpdatesButton!!.isEnabled = false
+            start_updates_button.isEnabled = true
+            stop_updates_button.isEnabled = false
         }
     }
 
     private fun updateLocationUI() {
-        if (mCurrentLocation != null) {
-            mLatitudeTextView!!.text = String.format(Locale.ENGLISH, "%s: %f", mLatitudeLabel,
-                    mCurrentLocation!!.latitude)
-            mLongitudeTextView!!.text = String.format(Locale.ENGLISH, "%s: %f", mLongitudeLabel,
-                    mCurrentLocation!!.longitude)
-            mLastUpdateTimeTextView!!.text = String.format(Locale.ENGLISH, "%s: %s",
-                    mLastUpdateTimeLabel, mLastUpdateTime)
+        if (currentLocation != null) {
+            latitude_text.text = String.format(Locale.ENGLISH, "%s: %f", latitudeLabel,
+                    currentLocation?.latitude)
+            longitude_text.text = String.format(Locale.ENGLISH, "%s: %f", longitudeLabel,
+                    currentLocation?.longitude)
+            last_update_time_text.text = String.format(Locale.ENGLISH, "%s: %s",
+                    lastUpdateTimeLabel, lastUpdateTime)
         }
     }
 
     private fun stopLocationUpdates() {
-        if ((!mRequestingLocationUpdates)!!) {
+        if ((!requestingLocationUpdates)) {
             Log.d(TAG, "stopLocationUpdates: updates never requested, no-op.")
             return
         }
 
-        mFusedLocationClient!!.removeLocationUpdates(mLocationCallback!!)
+        fusedLocationClient.removeLocationUpdates(locationCallback)
                 .addOnCompleteListener(this) {
-                    mRequestingLocationUpdates = false
+                    requestingLocationUpdates = false
                     setButtonsEnabledState()
                 }
     }
 
     public override fun onResume() {
         super.onResume()
-        if (mRequestingLocationUpdates!! && checkPermissions()) {
+        if (requestingLocationUpdates && checkPermissions()) {
             startLocationUpdates()
-        } else if (!mNeverAskPermissionShowed && !checkPermissions()) {
+        } else if (!neverAskPermissionShowed && !checkPermissions()) {
             requestPermissions()
         }
 
@@ -277,9 +246,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     public override fun onSaveInstanceState(savedInstanceState: Bundle) {
-        savedInstanceState.putBoolean(KEY_REQUESTING_LOCATION_UPDATES, mRequestingLocationUpdates!!)
-        savedInstanceState.putParcelable(KEY_LOCATION, mCurrentLocation)
-        savedInstanceState.putString(KEY_LAST_UPDATED_TIME_STRING, mLastUpdateTime)
+        savedInstanceState.putBoolean(KEY_REQUESTING_LOCATION_UPDATES, requestingLocationUpdates)
+        savedInstanceState.putParcelable(KEY_LOCATION, currentLocation)
+        savedInstanceState.putString(KEY_LAST_UPDATED_TIME_STRING, lastUpdateTime)
         super.onSaveInstanceState(savedInstanceState)
     }
 
@@ -331,7 +300,7 @@ class MainActivity : AppCompatActivity() {
             if (grantResults.size <= 0) {
                 Log.i(TAG, "User interaction was cancelled.")
             } else if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (mRequestingLocationUpdates!!) {
+                if (requestingLocationUpdates) {
                     Log.i(TAG, "Permission granted, updates requested, starting location updates")
                     startLocationUpdates()
                 }
@@ -351,7 +320,7 @@ class MainActivity : AppCompatActivity() {
                 val shouldProvideRationale = ActivityCompat.shouldShowRequestPermissionRationale(this,
                         Manifest.permission.ACCESS_FINE_LOCATION)
                 if (!shouldProvideRationale) {
-                    mNeverAskPermissionShowed = true
+                    neverAskPermissionShowed = true
                     showSnackbar(R.string.permission_denied_explanation,
                             R.string.settings, View.OnClickListener {
                         // Build intent that displays the App settings screen.
@@ -372,17 +341,15 @@ class MainActivity : AppCompatActivity() {
 
         private val TAG = MainActivity::class.java.simpleName
 
+        private const val REQUEST_PERMISSIONS_REQUEST_CODE = 42
+        private const val REQUEST_CHECK_SETTINGS = 21
 
-        private val REQUEST_PERMISSIONS_REQUEST_CODE = 42
-        private val REQUEST_CHECK_SETTINGS = 21
-
-
-        private val UPDATE_INTERVAL_IN_MILLISECONDS: Long = 10000
-        private val FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS = UPDATE_INTERVAL_IN_MILLISECONDS / 2
+        private const val UPDATE_INTERVAL_IN_MILLISECONDS: Long = 10000
+        private const val FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS = UPDATE_INTERVAL_IN_MILLISECONDS / 2
 
         // Keys for storing activity state in the Bundle.
-        private val KEY_REQUESTING_LOCATION_UPDATES = "requesting-location-updates"
-        private val KEY_LOCATION = "location"
-        private val KEY_LAST_UPDATED_TIME_STRING = "last-updated-time-string"
+        private const val KEY_REQUESTING_LOCATION_UPDATES = "requesting-location-updates"
+        private const val KEY_LOCATION = "location"
+        private const val KEY_LAST_UPDATED_TIME_STRING = "last-updated-time-string"
     }
 }
